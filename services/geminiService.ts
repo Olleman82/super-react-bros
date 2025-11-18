@@ -19,10 +19,35 @@ const findGroundLevel = (map: number[][], x: number): number => {
 
 // Helper function to validate and fix the generated level
 const validateAndFixLevel = (map: number[][], enemyPositions: any[]): { map: number[][], entities: any[] } => {
+  console.log('[validateAndFixLevel] Startar validering:', {
+    mapHeight: map.length,
+    mapWidth: map[0]?.length,
+    enemyPositionsCount: enemyPositions.length
+  });
+  
   const TILE_SIZE = 16;
   const GROUND_TILES = [1, 2, 3, 4, 5, 6, 7, 8, 9];
   const MAP_HEIGHT = map.length;
   const MAP_WIDTH = map[0]?.length || 150;
+  
+  // Ensure map has correct dimensions
+  if (!map || map.length === 0 || !map[0] || map[0].length === 0) {
+    console.error('[validateAndFixLevel] Kartan är tom eller har fel dimensioner!');
+    // Create a basic map as fallback
+    const fallbackMap: number[][] = [];
+    for (let y = 0; y < 15; y++) {
+      fallbackMap[y] = [];
+      for (let x = 0; x < 150; x++) {
+        if (y >= 13) {
+          fallbackMap[y][x] = 1; // Ground
+        } else {
+          fallbackMap[y][x] = 0; // Air
+        }
+      }
+    }
+    map = fallbackMap;
+    console.log('[validateAndFixLevel] Skapade fallback-karta');
+  }
   
   // Ensure bottom rows have ground for Mario's starting position
   // Make sure first 5 columns have solid ground
@@ -33,6 +58,10 @@ const validateAndFixLevel = (map: number[][], enemyPositions: any[]): { map: num
       }
     }
   }
+  
+  console.log('[validateAndFixLevel] Efter startposition-fix:', {
+    startArea: map.slice(MAP_HEIGHT - 2).map(row => row.slice(0, 5))
+  });
   
   // Fix enemies to be on ground level
   const fixedEntities = enemyPositions.map((e, i) => {
@@ -79,6 +108,7 @@ export const generateLevel = async (apiKey: string): Promise<LevelData | null> =
   const ai = new GoogleGenAI({ apiKey });
 
   try {
+    console.log('[GeminiService] Skickar begäran till Gemini...');
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: `Generate a Super Mario Bros style level map that closely follows the original game's design principles.
@@ -196,14 +226,68 @@ export const generateLevel = async (apiKey: string): Promise<LevelData | null> =
       }
     });
 
-    const data = JSON.parse(response.text || "{}");
-    if (!data.map) return null;
+    console.log('[GeminiService] Fick svar från Gemini:', {
+      hasText: !!response.text,
+      textLength: response.text?.length,
+      textPreview: response.text?.substring(0, 200),
+      fullText: response.text // Log full response for debugging
+    });
+
+    if (!response.text) {
+      console.error('[GeminiService] Inget text-svar från Gemini!');
+      return null;
+    }
+
+    let data;
+    try {
+      data = JSON.parse(response.text);
+    } catch (parseError) {
+      console.error('[GeminiService] Kunde inte parsa JSON från Gemini:', parseError);
+      console.error('[GeminiService] Raw text:', response.text);
+      return null;
+    }
+    
+    console.log('[GeminiService] Raw AI response:', {
+      hasMap: !!data.map,
+      mapType: typeof data.map,
+      mapLength: data.map?.length,
+      mapFirstRowLength: data.map?.[0]?.length,
+      hasEnemyPositions: !!data.enemyPositions,
+      enemyPositionsCount: data.enemyPositions?.length || 0,
+      sampleMapData: data.map ? {
+        firstRow: data.map[0]?.slice(0, 10),
+        lastRow: data.map[data.map.length - 1]?.slice(0, 10),
+        row13: data.map[13]?.slice(0, 10),
+        row14: data.map[14]?.slice(0, 10)
+      } : null
+    });
+    
+    if (!data.map) {
+      console.error('[GeminiService] Ingen karta i AI-svar!');
+      return null;
+    }
 
     // Validate and fix the generated level
+    console.log('[GeminiService] Validerar och fixar bana...');
     const { map: validatedMap, entities: validatedEntities } = validateAndFixLevel(
       data.map,
       data.enemyPositions || []
     );
+
+    // Log validated map info
+    console.log('[GeminiService] Validerad karta:', {
+      rows: validatedMap.length,
+      cols: validatedMap[0]?.length,
+      entitiesCount: validatedEntities.length,
+      sampleValidatedData: {
+        firstRow: validatedMap[0]?.slice(0, 10),
+        lastRow: validatedMap[validatedMap.length - 1]?.slice(0, 10),
+        row13: validatedMap[13]?.slice(0, 10),
+        row14: validatedMap[14]?.slice(0, 10)
+      },
+      nonZeroTiles: validatedMap.flat().filter(t => t !== 0).length,
+      totalTiles: validatedMap.flat().length
+    });
 
     return {
       map: validatedMap,

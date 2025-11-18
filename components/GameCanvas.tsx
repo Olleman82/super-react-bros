@@ -96,11 +96,31 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ status, levelData, onScore, onC
 
   useEffect(() => {
     if (status === GameStatus.PLAYING) {
+      console.log('[GameCanvas] Laddar ny bana:', {
+        mapRows: levelData.map?.length,
+        mapCols: levelData.map?.[0]?.length,
+        entitiesCount: levelData.entities?.length,
+        sampleMap: {
+          firstRow: levelData.map?.[0]?.slice(0, 10),
+          lastRow: levelData.map?.[levelData.map.length - 1]?.slice(0, 10),
+          row13: levelData.map?.[13]?.slice(0, 10),
+          row14: levelData.map?.[14]?.slice(0, 10)
+        },
+        nonZeroTiles: levelData.map?.flat().filter((t: number) => t !== 0).length || 0
+      });
+      
       gameState.current.map = JSON.parse(JSON.stringify(levelData.map)); // Deep copy map
       gameState.current.entities = levelData.entities.map(e => ({...e, grounded: false}));
       
+      console.log('[GameCanvas] Kopierad karta till gameState:', {
+        mapRows: gameState.current.map.length,
+        mapCols: gameState.current.map[0]?.length,
+        nonZeroTiles: gameState.current.map.flat().filter((t: number) => t !== 0).length
+      });
+      
       // Find safe starting position
       const startPos = findSafeStartPosition(gameState.current.map);
+      console.log('[GameCanvas] Mario startposition:', startPos);
       
       gameState.current.player = {
         ...gameState.current.player,
@@ -567,10 +587,23 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ status, levelData, onScore, onC
     const endCol = startCol + (SCREEN_WIDTH / TILE_SIZE) + 1;
     const map = gameState.current.map;
 
+    // Debug logging (only first frame to avoid spam)
+    if (frameCountRef.current === 0) {
+      console.log('[GameCanvas] Rendering karta:', {
+        startCol,
+        endCol,
+        mapRows: map.length,
+        mapCols: map[0]?.length,
+        visibleTiles: map.flat().slice(startCol, endCol).filter((t: number) => t !== 0).length,
+        sampleVisibleArea: map.slice(0, 5).map(row => row?.slice(startCol, Math.min(startCol + 5, row.length)))
+      });
+    }
+
     for (let y = 0; y < map.length; y++) {
       for (let x = startCol; x <= endCol; x++) {
-        if (!map[y] || !map[y][x]) continue;
+        if (!map[y] || map[y][x] === undefined) continue;
         const tile = map[y][x];
+        if (tile === 0) continue; // Skip air tiles
         const tx = x * TILE_SIZE;
         const ty = y * TILE_SIZE;
 
