@@ -100,7 +100,7 @@ export default function App() {
       return;
     }
 
-    console.log('[AI Generate] API-nyckel finns:', apiKey ? `${apiKey.substring(0, 10)}...` : 'SAKNAS');
+    console.log('[AI Generate] API-nyckel finns:', apiKey ? '***MASKERAD***' : 'SAKNAS');
     console.log('[AI Generate] Startar generering av AI-bana...');
     
     setLoadingText("Gemini bygger en bana...");

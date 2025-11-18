@@ -139,6 +139,34 @@ const validateAndFixLevel = (map: number[][], enemyPositions: any[]): { map: num
     fixedCount: fixedEntities.length
   });
   
+  // If no enemies were provided or all were filtered out, generate some default enemies
+  if (fixedEntities.length === 0) {
+    console.warn('[validateAndFixLevel] Inga fiender från AI, genererar standard-fiender...');
+    const defaultEnemyCount = 20;
+    for (let i = 0; i < defaultEnemyCount; i++) {
+      const x = Math.floor((i + 1) * (MAP_WIDTH / (defaultEnemyCount + 1)));
+      const groundY = findGroundLevel(map, x);
+      const groundPixelY = groundY * TILE_SIZE;
+      
+      // Check that there's no block above ground
+      const tileAboveGround = groundY - 1;
+      if (tileAboveGround >= 0 && map[tileAboveGround] && map[tileAboveGround][x] === 0) {
+        fixedEntities.push({
+          id: 2000 + i,
+          type: EntityType.GOOMBA,
+          pos: { x: x * TILE_SIZE, y: groundPixelY - 16 },
+          vel: { x: -0.5, y: 0 },
+          width: 16,
+          height: 16,
+          dead: false,
+          grounded: false,
+          direction: -1
+        });
+      }
+    }
+    console.log('[validateAndFixLevel] Genererade', fixedEntities.length, 'standard-fiender');
+  }
+  
   // Ensure flag exists at the end
   const flagX = MAP_WIDTH - 5;
   const flagY = MAP_HEIGHT - 3; // Above ground level
@@ -293,9 +321,12 @@ export const generateLevel = async (apiKey: string): Promise<LevelData | null> =
                   x: { type: Type.INTEGER },
                   y: { type: Type.INTEGER },
                   type: { type: Type.STRING }
-                }
+                },
+                required: ['x', 'y', 'type']
               }
             }
+          },
+          required: ['map', 'enemyPositions']
           }
         }
       }
@@ -304,8 +335,8 @@ export const generateLevel = async (apiKey: string): Promise<LevelData | null> =
     console.log('[GeminiService] Fick svar från Gemini:', {
       hasText: !!response.text,
       textLength: response.text?.length,
-      textPreview: response.text?.substring(0, 200),
-      fullText: response.text // Log full response for debugging
+      textPreview: response.text?.substring(0, 200)
+      // Note: Not logging fullText to avoid exposing sensitive data
     });
 
     if (!response.text) {
