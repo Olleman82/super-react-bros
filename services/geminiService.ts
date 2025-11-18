@@ -327,7 +327,6 @@ export const generateLevel = async (apiKey: string): Promise<LevelData | null> =
             }
           },
           required: ['map', 'enemyPositions']
-          }
         }
       }
     });
