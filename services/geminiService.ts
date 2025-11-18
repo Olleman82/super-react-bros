@@ -3,16 +3,25 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { LevelData, TileType, EntityType } from "../types";
 
 // Helper function to find ground level at a given x position
+// Returns the row index of the actual ground level (rows 13-14), not blocks above
 const findGroundLevel = (map: number[][], x: number): number => {
   const TILE_SIZE = 16;
-  const GROUND_TILES = [1, 2, 3, 4, 5, 6, 7, 8, 9]; // All solid tiles
+  const GROUND_TILE = 1; // Only actual ground, not blocks
   
-  // Check from bottom up
-  for (let y = map.length - 1; y >= 0; y--) {
-    if (map[y] && GROUND_TILES.includes(map[y][x])) {
+  // First check rows 13-14 (the actual ground level)
+  for (let y = map.length - 1; y >= map.length - 2; y--) {
+    if (map[y] && map[y][x] === GROUND_TILE) {
       return y;
     }
   }
+  
+  // If no ground found in bottom rows, check all rows from bottom up
+  for (let y = map.length - 1; y >= 0; y--) {
+    if (map[y] && map[y][x] === GROUND_TILE) {
+      return y;
+    }
+  }
+  
   // Default to bottom row if no ground found
   return map.length - 1;
 };
@@ -69,6 +78,38 @@ const validateAndFixLevel = (map: number[][], enemyPositions: any[]): { map: num
     const groundY = findGroundLevel(map, tileX);
     const groundPixelY = groundY * TILE_SIZE;
     
+    // Ensure enemy is placed on top of actual ground, not inside blocks
+    // Check that the tile above ground is air (not a block)
+    const tileAboveGround = groundY - 1;
+    if (tileAboveGround >= 0 && map[tileAboveGround] && map[tileAboveGround][tileX] !== 0) {
+      // There's a block above ground, skip this enemy or place it further right
+      console.warn(`[validateAndFixLevel] Fiende ${i} skulle hamna i block vid x=${tileX}, hoppar över eller flyttar`);
+      // Try to find a nearby safe spot
+      let safeX = tileX;
+      for (let offset = 1; offset <= 3; offset++) {
+        const checkX = Math.min(tileX + offset, MAP_WIDTH - 1);
+        const checkGroundY = findGroundLevel(map, checkX);
+        const checkTileAbove = checkGroundY - 1;
+        if (checkTileAbove >= 0 && map[checkTileAbove] && map[checkTileAbove][checkX] === 0) {
+          safeX = checkX;
+          break;
+        }
+      }
+      const safeGroundY = findGroundLevel(map, safeX);
+      const safeGroundPixelY = safeGroundY * TILE_SIZE;
+      return {
+        id: i + 1000,
+        type: EntityType.GOOMBA,
+        pos: { x: safeX * TILE_SIZE, y: safeGroundPixelY - 16 },
+        vel: { x: -0.5, y: 0 },
+        width: 16,
+        height: 16,
+        dead: false,
+        grounded: false,
+        direction: -1
+      };
+    }
+    
     // Place enemy on top of ground (one tile above)
     return {
       id: i + 1000,
@@ -81,6 +122,21 @@ const validateAndFixLevel = (map: number[][], enemyPositions: any[]): { map: num
       grounded: false,
       direction: -1
     };
+  }).filter(e => {
+    // Filter out enemies that would be placed in invalid positions
+    const tileX = Math.floor(e.pos.x / TILE_SIZE);
+    const tileY = Math.floor(e.pos.y / TILE_SIZE);
+    // Make sure enemy is not inside a solid block
+    if (tileY >= 0 && tileY < MAP_HEIGHT && map[tileY] && GROUND_TILES.includes(map[tileY][tileX])) {
+      console.warn(`[validateAndFixLevel] Fiende skulle hamna i block vid (${tileX}, ${tileY}), filtrerar bort`);
+      return false;
+    }
+    return true;
+  });
+  
+  console.log('[validateAndFixLevel] Efter fiende-fix:', {
+    originalCount: enemyPositions.length,
+    fixedCount: fixedEntities.length
   });
   
   // Ensure flag exists at the end
@@ -146,58 +202,77 @@ export const generateLevel = async (apiKey: string): Promise<LevelData | null> =
       - Mario should start on safe ground, not over a pit
       
       3. ENEMY PLACEMENT LOGIC:
-      - Enemies MUST be placed on ground level (same Y as ground tiles in rows 13-14)
-      - Enemy Y position should be: groundY * 16 - 16 (one tile above ground)
-      - NEVER place enemies below ground level or floating in air
-      - Place enemies on platforms that Mario can reach
+      - Place 15-25 enemies throughout the level for good gameplay
+      - Enemies MUST be placed on actual ground level (rows 13-14, tile type 1)
+      - Enemy Y position should be: (row 13 or 14) * 16 - 16 (one tile above ground)
+      - NEVER place enemies inside blocks, below ground level, or floating in air
+      - Distribute enemies evenly: 3-5 enemies per 30-column section
       - Use type "goomba" for all enemies
-      - Distribute enemies evenly throughout the level
+      - Place enemies on flat ground sections, not in pits
       
       4. QUESTION BLOCKS (type 3) - Power-up Logic:
-      - Early in level (x < 50): Place Mushroom blocks (these give Mario Super Mario)
-      - Middle of level (x 50-100): Mix of Coin blocks and occasional Flower blocks
-      - Later in level (x > 100): More Flower blocks (Fire Flower for advanced players)
-      - Place Question Blocks on platforms above ground, typically 2-4 tiles high
+      - Place 8-12 Question Blocks throughout the level
+      - Early in level (columns 0-50): Place 2-3 Mushroom blocks (these give Mario Super Mario)
+      - Middle of level (columns 50-100): Place 3-4 Coin blocks and 1-2 Flower blocks
+      - Later in level (columns 100-150): Place 2-3 Flower blocks (Fire Flower for advanced players)
+      - Place Question Blocks on platforms above ground, typically at row 9-11 (2-4 tiles high)
       - Group Question Blocks in sets of 2-3 for visual appeal
+      - Create platforms with bricks (type 2) below Question Blocks so Mario can reach them
       
       5. BRICK BLOCKS (type 2):
-      - Place in patterns above ground level
-      - Create platforms for Mario to jump on
-      - Use bricks to create staircases and elevated paths
+      - Place 20-30 brick blocks throughout the level to create platforms
+      - Create multiple platforms at different heights (rows 9-12)
+      - Build staircases: start low and go higher, or create elevated paths
+      - Place bricks in rows 8-12 to create jumpable platforms
       - Small Mario can't break bricks, but Big/Fire Mario can
+      - Create at least 5-7 distinct platform areas for Mario to explore
       
       6. COINS:
-      - Coins are usually INSIDE Question Blocks (not as map tiles)
-      - If using coin tiles (type 12), place them in patterns above ground
-      - Coins should form paths that guide the player
-      - Place coins in rows 5-10, not at ground level
+      - Coins are INSIDE Question Blocks (not as map tiles)
+      - Most Question Blocks (60-70%) should contain coins
+      - The remaining Question Blocks contain power-ups (Mushroom/Flower)
+      - This ensures good coin collection gameplay
       
       7. PIPES:
-      - Pipes must be placed ON TOP OF ground (type 1)
+      - Place 2-4 pipes throughout the level as obstacles
+      - Pipes must be placed ON TOP OF ground (type 1) in rows 13-14
       - Use tiles 6 and 7 for pipe tops (left and right)
       - Use tiles 4 and 8 for pipe body sides
-      - Pipes should be 2-4 tiles tall
-      - Place pipes strategically to create obstacles
+      - Pipes should be 2-4 tiles tall (rows 10-13 or 9-13)
+      - Place pipes strategically to create obstacles and force jumps
+      - Space pipes out: one every 30-40 columns
       
-      8. FLAG AND POLE:
-      - Place pole (type 10) at x=145 (column 145)
+      8. DECORATIVE ELEMENTS (for visual variety):
+      - Use tile 14 (CLOUD) in rows 2-4 for background decoration
+      - Use tile 15 (BUSH) in row 12 for ground-level decoration
+      - Use tile 16 (HILL) in rows 10-11 for background hills
+      - Place decorative elements every 15-20 columns for visual interest
+      - These don't affect gameplay but make the level look authentic
+      
+      9. FLAG AND POLE:
+      - Place pole (type 10) at column 145 (x=145)
       - Pole should extend from row 2 to row 13 (ground level)
       - Place flag (type 11) at row 2, column 145
       - Ensure ground exists at the base of the pole (row 13-14, column 145)
       - Mario should be able to jump and touch the flag to complete the level
       
-      9. LEVEL PROGRESSION:
-      - Start easy: simple ground, few enemies
-      - Build difficulty: add platforms, more enemies, pits
+      10. LEVEL PROGRESSION AND DENSITY:
+      - Start easy (columns 0-30): Simple ground, 3-4 enemies, 1-2 Question Blocks, 1 platform
+      - Build up (columns 30-80): More platforms, 6-8 enemies, 3-4 Question Blocks, 1-2 pipes
+      - Peak difficulty (columns 80-130): Complex platforming, 8-10 enemies, 4-5 Question Blocks, 1-2 pipes
+      - Final section (columns 130-150): Lead to flag, 2-3 enemies, 1 Question Block
       - Create variety: mix of ground running and platforming sections
-      - End with flag accessible via jump or platform
-      
-      10. VISUAL CONSISTENCY:
-      - Follow original game patterns: ground sections, then platforms, then more complex areas
-      - Use bricks and question blocks to create interesting vertical gameplay
       - Ensure all platforms are reachable with Mario's jump height
       
-      Remember: This should feel like an authentic Super Mario Bros level with proper power-up placement, enemy positioning, and level flow.`,
+      11. CONTENT DENSITY REQUIREMENTS:
+      - Minimum 20-30 brick blocks for platforms
+      - Minimum 8-12 Question Blocks
+      - Minimum 15-25 enemies
+      - Minimum 2-4 pipes
+      - Decorative elements (clouds, bushes, hills) every 15-20 columns
+      - The level should feel FULL and engaging, not empty
+      
+      Remember: This should feel like an authentic Super Mario Bros level with proper power-up placement, enemy positioning, varied platforming, and rich visual content. The level should be FUN to play with lots of things to explore and collect!`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
