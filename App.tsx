@@ -2,8 +2,9 @@
 import React, { useState, useEffect } from 'react';
 import GameCanvas from './components/GameCanvas';
 import { GameStatus, LevelData, GameStats, EntityType } from './types';
-import { DEFAULT_LEVEL_MAP, SCREEN_WIDTH, SCALE, COLORS } from './constants';
+import { SCREEN_WIDTH, SCALE, COLORS } from './constants';
 import { generateLevel } from './services/geminiService';
+import { generateLevel1_1, generateLevel1_2, generateLevel1_3, generateLevel1_4 } from './services/levels';
 import { audioService } from './services/audioService';
 
 export default function App() {
@@ -15,11 +16,10 @@ export default function App() {
     time: 400,
     lives: 3
   });
-  const [levelData, setLevelData] = useState<LevelData>({
-    map: DEFAULT_LEVEL_MAP,
-    entities: [],
-    backgroundColor: COLORS.SKY
-  });
+  
+  // Initialize with 1-1 data (even if empty initially)
+  const [levelData, setLevelData] = useState<LevelData>(() => generateLevel1_1());
+  
   const [loadingText, setLoadingText] = useState('');
   
   // API Key State
@@ -55,39 +55,11 @@ export default function App() {
     return () => clearInterval(interval);
   }, [status]);
 
-  const startGame = () => {
-    setStats(s => ({ ...s, score: 0, coins: 0, time: 400, lives: 3, world: '1-1' }));
-    resetLevel(DEFAULT_LEVEL_MAP);
+  const startGame = (levelGenerator: () => LevelData, worldName: string) => {
+    setStats(s => ({ ...s, score: 0, coins: 0, time: 400, lives: 3, world: worldName }));
+    const data = levelGenerator();
+    setLevelData(data);
     setStatus(GameStatus.PLAYING);
-  };
-
-  const resetLevel = (map: number[][]) => {
-    let entities = [];
-    
-    // Basic Goomba placement for default map
-    if (map === DEFAULT_LEVEL_MAP) {
-      // 1-1 Classic positions (approx)
-      const goombaX = [22, 40, 51, 52.5, 80, 82, 97, 98.5, 114, 115.5, 124, 125.5, 174, 175.5];
-      goombaX.forEach((x, i) => {
-        entities.push({
-          id: i + 100,
-          type: EntityType.GOOMBA,
-          pos: { x: x * 16, y: 10 * 16 }, // slightly above ground to fall in
-          vel: { x: -0.5, y: 0 },
-          width: 16,
-          height: 16,
-          dead: false,
-          grounded: false,
-          direction: -1
-        });
-      });
-    }
-
-    setLevelData({
-      map,
-      entities: entities as any,
-      backgroundColor: COLORS.SKY
-    });
   };
 
   const handleAiGenerate = async () => {
@@ -115,12 +87,6 @@ export default function App() {
       
       if (data) {
         console.log('[AI Generate] Bana genererad framgångsrikt!');
-        console.log('[AI Generate] Bana-data:', {
-          mapRows: data.map.length,
-          mapCols: data.map[0]?.length || 0,
-          entitiesCount: data.entities?.length || 0,
-          backgroundColor: data.backgroundColor
-        });
         setLevelData(data);
         setStats(s => ({ ...s, score: 0, coins: 0, time: 400, world: '1-AI', lives: 3 }));
         setStatus(GameStatus.PLAYING);
@@ -222,13 +188,37 @@ export default function App() {
             
             {!showKeyInput ? (
               <>
-                <button 
-                  onClick={startGame}
-                  className="px-6 py-4 bg-white text-black hover:bg-[#F8D820] mb-4 text-sm md:text-lg transition-colors border-4 border-transparent hover:border-white w-full max-w-sm uppercase"
-                  style={{fontFamily: '"Press Start 2P"'}}
-                >
-                  STARTA SPEL (1-1)
-                </button>
+                <div className="grid grid-cols-2 gap-4 mb-6 w-full max-w-sm">
+                    <button 
+                    onClick={() => startGame(generateLevel1_1, '1-1')}
+                    className="px-4 py-4 bg-white text-black hover:bg-[#F8D820] text-xs md:text-sm transition-colors border-4 border-transparent hover:border-white uppercase"
+                    style={{fontFamily: '"Press Start 2P"'}}
+                    >
+                    1-1 CLASSIC
+                    </button>
+                    <button 
+                    onClick={() => startGame(generateLevel1_2, '1-2')}
+                    className="px-4 py-4 bg-blue-900 text-white hover:bg-blue-700 text-xs md:text-sm transition-colors border-4 border-transparent hover:border-white uppercase"
+                    style={{fontFamily: '"Press Start 2P"'}}
+                    >
+                    1-2 UNDERGROUND
+                    </button>
+                    <button 
+                    onClick={() => startGame(generateLevel1_3, '1-3')}
+                    className="px-4 py-4 bg-green-700 text-white hover:bg-green-600 text-xs md:text-sm transition-colors border-4 border-transparent hover:border-white uppercase"
+                    style={{fontFamily: '"Press Start 2P"'}}
+                    >
+                    1-3 ATHLETIC
+                    </button>
+                    <button 
+                    onClick={() => startGame(generateLevel1_4, '1-4')}
+                    className="px-4 py-4 bg-red-900 text-white hover:bg-red-700 text-xs md:text-sm transition-colors border-4 border-transparent hover:border-white uppercase"
+                    style={{fontFamily: '"Press Start 2P"'}}
+                    >
+                    1-4 CASTLE
+                    </button>
+                </div>
+
                 <button 
                   onClick={handleAiGenerate}
                   className="px-6 py-3 bg-indigo-600 text-white hover:bg-indigo-500 text-xs md:text-sm transition-colors flex items-center justify-center gap-2 w-full max-w-sm uppercase border-4 border-transparent hover:border-white"
@@ -312,7 +302,7 @@ export default function App() {
             <p className="text-3xl text-yellow-300 mb-8 text-center leading-tight drop-shadow-md" style={{fontFamily: '"Press Start 2P"'}}>BANA KLARAD!</p>
             <p className="mb-8 text-xl" style={{fontFamily: '"Press Start 2P"'}}>POÄNG: {stats.score}</p>
             <div className="flex flex-col gap-4 w-full max-w-xs px-4">
-              <button onClick={startGame} className="bg-white text-black border-4 border-black px-4 py-3 hover:bg-gray-200 transition uppercase font-bold" style={{fontFamily: '"Press Start 2P"'}}>SPELA IGEN</button>
+              <button onClick={() => startGame(generateLevel1_1, '1-1')} className="bg-white text-black border-4 border-black px-4 py-3 hover:bg-gray-200 transition uppercase font-bold" style={{fontFamily: '"Press Start 2P"'}}>SPELA IGEN</button>
               <button onClick={handleAiGenerate} className="bg-yellow-400 text-black border-4 border-black px-4 py-3 hover:bg-yellow-300 transition uppercase font-bold" style={{fontFamily: '"Press Start 2P"'}}>NÄSTA BANA (AI)</button>
             </div>
           </div>

@@ -259,7 +259,9 @@ export const generateLevel = async (apiKey: string): Promise<LevelData | null> =
       
       5. PLAYABILITY:
       - Ensure all jumps are possible (Mario can jump about 4-5 tiles high and 3-4 tiles wide).
+      - MAX PIT WIDTH: 3 tiles. NEVER make a pit wider than 3 tiles.
       - Avoid "soft locks" where Mario falls into a deep pit he cannot escape from (unless it's a death pit).
+      - Ensure there is a landing spot after every jump.
       
       6. DECORATION:
       - Use occasional clouds (tile 14, implied logic) or hills (tile 16) if you want, but focus on the gameplay blocks first.
