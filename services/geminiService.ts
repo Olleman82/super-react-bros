@@ -191,116 +191,89 @@ export const generateLevel = async (apiKey: string): Promise<LevelData | null> =
 
   const ai = new GoogleGenAI({ apiKey });
 
+  // Randomize level style and parameters
+  const styles = [
+    { name: "Classic", description: "Standard Super Mario Bros 1-1 style. Balanced ground and platforms." },
+    { name: "Hilly", description: "Lots of hills, verticality, and elevated ground sections. Less flat ground." },
+    { name: "Athletic", description: "Many platforms, gaps, and jumps. Less solid ground at the bottom." },
+    { name: "Broken", description: "Fragmented ground, many small islands, requires precise jumping." }
+  ];
+  
+  const selectedStyle = styles[Math.floor(Math.random() * styles.length)];
+  const seed = Math.floor(Math.random() * 1000000);
+
   try {
-    console.log('[GeminiService] Skickar begäran till Gemini...');
+    console.log(`[GeminiService] Skickar begäran till Gemini (Style: ${selectedStyle.name}, Seed: ${seed})...`);
+    
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: `Generate a Super Mario Bros style level map that closely follows the original game's design principles.
+      contents: `Generate a Super Mario Bros style level map.
+      Style: ${selectedStyle.name} - ${selectedStyle.description}
+      Random Seed: ${seed}
+      
       The map should be a 2D array of integers (15 rows x 150 columns).
       
-      Tile Mapping:
+      Tile Mapping (Must match game engine constants):
       0: Air (empty space)
       1: Ground (solid brown ground tile)
       2: Brick (breakable brick block)
       3: Question Block (contains power-ups or coins)
-      4: Pipe Body Left
       5: Hard Block (indestructible gray block)
-      6: Pipe Top Left
-      7: Pipe Top Right
-      8: Pipe Body Right
-      9: Pipe Body (full)
+      6: Pipe Body Left (vertical pipe segment, left side)
+      7: Pipe Body Right (vertical pipe segment, right side)
+      8: Pipe Top Left (top left corner of pipe)
+      9: Pipe Top Right (top right corner of pipe)
       10: Pole (flagpole)
       11: Flag (at top of pole)
-      12: Coin (floating coin, rarely used in map - coins usually come from blocks)
+      12: Coin (floating coin)
+      14: Cloud (in sky)
+      15: Bush (on ground)
+      16: Hill (background hill)
       
       Provide a JSON object with:
       - map: number[][] (15 rows x 150 columns)
       - enemyPositions: {x: number, y: number, type: string}[] (x and y in pixels, not tiles)
       
-      CRITICAL DESIGN RULES (based on original Super Mario Bros):
+      CRITICAL DESIGN RULES:
       
-      1. GROUND LEVEL:
-      - Rows 13 and 14 (bottom 2 rows) MUST be mostly type 1 (Ground) to form the main ground level
-      - Add occasional pits (type 0) for challenge, but ensure Mario can always progress
-      - First 10 columns MUST have solid ground (no pits) so Mario starts safely
+      1. DYNAMIC TERRAIN:
+      - DO NOT make the level just flat ground at the bottom.
+      - Vary the ground height. Use hills, pits, and floating islands.
+      - In "Hilly" or "Athletic" styles, the main path can be elevated (rows 8-10).
+      - Ensure columns 0-10 have solid ground at row 13-14 for a safe start.
       
       2. MARIO START POSITION:
-      - Mario starts at x=50 pixels (approximately column 3)
-      - Ensure columns 0-5 have solid ground (type 1) in rows 13-14
-      - Mario should start on safe ground, not over a pit
+      - Mario starts at x=50 pixels (column 3).
+      - Ensure the starting area is safe.
       
-      3. ENEMY PLACEMENT LOGIC:
-      - Place 15-25 enemies throughout the level for good gameplay
-      - Enemies MUST be placed on actual ground level (rows 13-14, tile type 1)
-      - Enemy Y position should be: (row 13 or 14) * 16 - 16 (one tile above ground)
-      - NEVER place enemies inside blocks, below ground level, or floating in air
-      - Distribute enemies evenly: 3-5 enemies per 30-column section
-      - Use type "goomba" for all enemies
-      - Place enemies on flat ground sections, not in pits
+      3. ENEMY PLACEMENT:
+      - Place 15-25 enemies (Goombas).
+      - Enemies must be on solid blocks (Ground, Brick, or Hard Block).
+      - DO NOT place enemies in the air or inside blocks.
+      - Distribute them throughout the level.
       
-      4. QUESTION BLOCKS (type 3) - Power-up Logic:
-      - Place 8-12 Question Blocks throughout the level
-      - Early in level (columns 0-50): Place 2-3 Mushroom blocks (these give Mario Super Mario)
-      - Middle of level (columns 50-100): Place 3-4 Coin blocks and 1-2 Flower blocks
-      - Later in level (columns 100-150): Place 2-3 Flower blocks (Fire Flower for advanced players)
-      - Place Question Blocks on platforms above ground, typically at row 9-11 (2-4 tiles high)
-      - Group Question Blocks in sets of 2-3 for visual appeal
-      - Create platforms with bricks (type 2) below Question Blocks so Mario can reach them
+      4. PLATFORMS AND OBSTACLES:
+      - Use Brick Blocks (2) and Question Blocks (3) to create platforms.
+      - Create staircases and elevated paths.
+      - Place Pipes (tiles 6,7,8,9) on top of ground sections.
       
-      5. BRICK BLOCKS (type 2):
-      - Place 20-30 brick blocks throughout the level to create platforms
-      - Create multiple platforms at different heights (rows 9-12)
-      - Build staircases: start low and go higher, or create elevated paths
-      - Place bricks in rows 8-12 to create jumpable platforms
-      - Small Mario can't break bricks, but Big/Fire Mario can
-      - Create at least 5-7 distinct platform areas for Mario to explore
+      5. PLAYABILITY:
+      - Ensure all jumps are possible (Mario can jump about 4-5 tiles high and 3-4 tiles wide).
+      - Avoid "soft locks" where Mario falls into a deep pit he cannot escape from (unless it's a death pit).
       
-      6. COINS:
-      - Coins are INSIDE Question Blocks (not as map tiles)
-      - Most Question Blocks (60-70%) should contain coins
-      - The remaining Question Blocks contain power-ups (Mushroom/Flower)
-      - This ensures good coin collection gameplay
+      6. DECORATION:
+      - Use occasional clouds (tile 14, implied logic) or hills (tile 16) if you want, but focus on the gameplay blocks first.
       
-      7. PIPES:
-      - Place 2-4 pipes throughout the level as obstacles
-      - Pipes must be placed ON TOP OF ground (type 1) in rows 13-14
-      - Use tiles 6 and 7 for pipe tops (left and right)
-      - Use tiles 4 and 8 for pipe body sides
-      - Pipes should be 2-4 tiles tall (rows 10-13 or 9-13)
-      - Place pipes strategically to create obstacles and force jumps
-      - Space pipes out: one every 30-40 columns
+      7. FLAG:
+      - Place a flagpole at the end (column 145).
       
-      8. DECORATIVE ELEMENTS (for visual variety):
-      - Use tile 14 (CLOUD) in rows 2-4 for background decoration
-      - Use tile 15 (BUSH) in row 12 for ground-level decoration
-      - Use tile 16 (HILL) in rows 10-11 for background hills
-      - Place decorative elements every 15-20 columns for visual interest
-      - These don't affect gameplay but make the level look authentic
+      Make the level feel ORGANIC and NON-REPETITIVE. Avoid simple repeating patterns.
       
-      9. FLAG AND POLE:
-      - Place pole (type 10) at column 145 (x=145)
-      - Pole should extend from row 2 to row 13 (ground level)
-      - Place flag (type 11) at row 2, column 145
-      - Ensure ground exists at the base of the pole (row 13-14, column 145)
-      - Mario should be able to jump and touch the flag to complete the level
-      
-      10. LEVEL PROGRESSION AND DENSITY:
-      - Start easy (columns 0-30): Simple ground, 3-4 enemies, 1-2 Question Blocks, 1 platform
-      - Build up (columns 30-80): More platforms, 6-8 enemies, 3-4 Question Blocks, 1-2 pipes
-      - Peak difficulty (columns 80-130): Complex platforming, 8-10 enemies, 4-5 Question Blocks, 1-2 pipes
-      - Final section (columns 130-150): Lead to flag, 2-3 enemies, 1 Question Block
-      - Create variety: mix of ground running and platforming sections
-      - Ensure all platforms are reachable with Mario's jump height
-      
-      11. CONTENT DENSITY REQUIREMENTS:
-      - Minimum 20-30 brick blocks for platforms
-      - Minimum 8-12 Question Blocks
-      - Minimum 15-25 enemies
-      - Minimum 2-4 pipes
-      - Decorative elements (clouds, bushes, hills) every 15-20 columns
-      - The level should feel FULL and engaging, not empty
-      
-      Remember: This should feel like an authentic Super Mario Bros level with proper power-up placement, enemy positioning, varied platforming, and rich visual content. The level should be FUN to play with lots of things to explore and collect!`,
+      Style Specific Instructions:
+      ${selectedStyle.name === "Classic" ? "- Balance between running and jumping. Classic 1-1 feel." : ""}
+      ${selectedStyle.name === "Hilly" ? "- Create rolling hills. Ground level should oscillate between row 14 and row 8." : ""}
+      ${selectedStyle.name === "Athletic" ? "- Focus on platforming. Use floating islands of ground. Many gaps." : ""}
+      ${selectedStyle.name === "Broken" ? "- The ground is broken. Lots of small pits and small platforms. High difficulty." : ""}`,
       config: {
         responseMimeType: "application/json",
         responseSchema: {
@@ -335,7 +308,6 @@ export const generateLevel = async (apiKey: string): Promise<LevelData | null> =
       hasText: !!response.text,
       textLength: response.text?.length,
       textPreview: response.text?.substring(0, 200)
-      // Note: Not logging fullText to avoid exposing sensitive data
     });
 
     if (!response.text) {
@@ -359,12 +331,7 @@ export const generateLevel = async (apiKey: string): Promise<LevelData | null> =
       mapFirstRowLength: data.map?.[0]?.length,
       hasEnemyPositions: !!data.enemyPositions,
       enemyPositionsCount: data.enemyPositions?.length || 0,
-      sampleMapData: data.map ? {
-        firstRow: data.map[0]?.slice(0, 10),
-        lastRow: data.map[data.map.length - 1]?.slice(0, 10),
-        row13: data.map[13]?.slice(0, 10),
-        row14: data.map[14]?.slice(0, 10)
-      } : null
+      style: selectedStyle.name
     });
     
     if (!data.map) {
@@ -378,21 +345,6 @@ export const generateLevel = async (apiKey: string): Promise<LevelData | null> =
       data.map,
       data.enemyPositions || []
     );
-
-    // Log validated map info
-    console.log('[GeminiService] Validerad karta:', {
-      rows: validatedMap.length,
-      cols: validatedMap[0]?.length,
-      entitiesCount: validatedEntities.length,
-      sampleValidatedData: {
-        firstRow: validatedMap[0]?.slice(0, 10),
-        lastRow: validatedMap[validatedMap.length - 1]?.slice(0, 10),
-        row13: validatedMap[13]?.slice(0, 10),
-        row14: validatedMap[14]?.slice(0, 10)
-      },
-      nonZeroTiles: validatedMap.flat().filter(t => t !== 0).length,
-      totalTiles: validatedMap.flat().length
-    });
 
     return {
       map: validatedMap,
