@@ -1,5 +1,5 @@
 import { TileType, LevelData, EntityType, Entity } from "../types";
-import { COLORS } from "../constants";
+import { COLORS, MAX_JUMP_HEIGHT_TILES, MAX_HORIZONTAL_GAP_TILES, MAX_STEP_HEIGHT_TILES } from "../constants";
 
 const LEVEL_WIDTH = 220;
 const LEVEL_HEIGHT = 15;
@@ -40,6 +40,47 @@ const createStair = (map: number[][], x: number, h: number, dir: 1 | -1, bottomY
      for(let j=0; j<=i; j++) {
         set(map, x + (dir === 1 ? i : -i), bottomY-j, TileType.HARD_BLOCK);
      }
+  }
+};
+
+const MAX_PLATFORM_OFFSET = Math.max(1, Math.floor(MAX_JUMP_HEIGHT_TILES));
+const MAX_GAP_WIDTH = Math.max(1, Math.floor(MAX_HORIZONTAL_GAP_TILES));
+
+const clampPlatformOffset = (offset: number) => Math.max(1, Math.min(offset, MAX_PLATFORM_OFFSET));
+
+const placeFloatingPlatform = (
+  map: number[][],
+  x: number,
+  width: number,
+  heightAboveGround: number,
+  tile: TileType = TileType.BRICK
+) => {
+  const offset = clampPlatformOffset(heightAboveGround);
+  const row = Math.max(0, 13 - offset);
+  fillRect(map, x, row, width, 1, tile);
+  return row;
+};
+
+const placeMushroomPlatform = (map: number[][], x: number, width: number, heightAboveGround: number) => {
+  const row = placeFloatingPlatform(map, x, width, heightAboveGround);
+  const trunkTop = row + 1;
+  const trunkHeight = Math.max(1, 13 - row);
+  fillRect(
+    map,
+    x + Math.max(0, Math.floor(width / 2) - 1),
+    trunkTop,
+    Math.min(2, width),
+    Math.min(trunkHeight, LEVEL_HEIGHT - trunkTop),
+    TileType.HARD_BLOCK
+  );
+};
+
+const carveGap = (map: number[][], start: number, width: number) => {
+  const safeWidth = Math.min(width, MAX_GAP_WIDTH);
+  for (let x = start; x < start + safeWidth; x++) {
+    if (x < 0 || x >= LEVEL_WIDTH) continue;
+    map[13][x] = TileType.AIR;
+    map[14][x] = TileType.AIR;
   }
 };
 
@@ -152,9 +193,10 @@ export const generateLevel1_2 = (): LevelData => {
   // Entrance area
   for(let y=2; y<13; y++) set(map, 6, y, TileType.BRICK);
   
-  // Platforms and obstacles
-  fillRect(map, 10, 9, 5, 1, TileType.BRICK);
-  set(map, 12, 5, TileType.QUESTION_BLOCK);
+  // Early platforms and power-up (≤ 4 tiles above ground)
+  placeFloatingPlatform(map, 10, 5, 4);
+  set(map, 12, 9, TileType.QUESTION_BLOCK);
+  placeFloatingPlatform(map, 18, 4, 3);
   
   placePipe(map, 20, 2);
   placePipe(map, 28, 3);
@@ -162,52 +204,63 @@ export const generateLevel1_2 = (): LevelData => {
   // Broken ceiling section (warp zone area idea)
   fillRect(map, 35, 0, 10, 2, TileType.AIR); 
   
-  // Pits
-  for(let x=40; x<45; x++) {
-    set(map, x, 13, TileType.AIR);
-    set(map, x, 14, TileType.AIR);
+  // First pit with rescue platforms
+  carveGap(map, 40, 3);
+  placeFloatingPlatform(map, 40, 4, 3);
+  placeFloatingPlatform(map, 46, 4, 2);
+  
+  // Rhythm section
+  for(let offset=0; offset<3; offset++) {
+    placeFloatingPlatform(map, 52 + offset * 6, 5, 2 + (offset % 2 ? 1 : 2));
   }
+  for(let x=52; x<69; x+=2) set(map, 11, x, TileType.COIN);
   
-  // High path vs low path
-  fillRect(map, 50, 7, 15, 1, TileType.BRICK);
-  for(let x=50; x<65; x+=2) set(map, x, 3, TileType.COIN);
-  
-  // More pipes
+  // Pipes with safe ledges
   placePipe(map, 70, 2);
+  placeFloatingPlatform(map, 74, 5, 3);
   placePipe(map, 80, 4);
+  placeFloatingPlatform(map, 86, 4, 4);
   placePipe(map, 90, 3);
   
-  // Starman area?
-  set(map, 95, 9, TileType.BRICK);
+  // Reward blocks
+  placeFloatingPlatform(map, 95, 5, 3);
   set(map, 96, 9, TileType.QUESTION_BLOCK);
-  set(map, 97, 9, TileType.BRICK);
   
-  // Stairs down
-  createStair(map, 110, 4, 1);
+  // Gentle stairs
+  createStair(map, 110, 3, 1);
+  createStair(map, 130, 3, -1);
   
-  // Exit pipe
-  placePipe(map, 180, 4); // To warp zone?
-  placePipe(map, 200, 2); // Normal exit
+  // Late pits with platforms
+  carveGap(map, 140, 2);
+  placeFloatingPlatform(map, 138, 4, 2);
+  carveGap(map, 150, 3);
+  placeFloatingPlatform(map, 152, 4, 3);
+  
+  // Exit pipes and landing
+  placePipe(map, 180, 4);
+  placeFloatingPlatform(map, 184, 4, 3);
+  placePipe(map, 200, 2);
   
   // Flag (Fake underground exit usually has pipe, but we use flag for now)
   set(map, 210, 12, TileType.HARD_BLOCK);
   fillRect(map, 210, 2, 1, 10, TileType.POLE);
   set(map, 210, 2, TileType.FLAG);
   
-  // Enemies (Goombas for now, should be Koopas ideally)
-  for(let i=0; i<15; i++) {
+  // Enemies distributed per section
+  const enemySlots = [25, 35, 60, 75, 92, 115, 145, 165, 190];
+  enemySlots.forEach((slot, i) => {
     entities.push({
-      id: i + 200,
+      id: 200 + i,
       type: EntityType.GOOMBA,
-      pos: { x: (20 + i * 10) * 16, y: 10 * 16 },
-      vel: { x: -0.5, y: 0 },
+      pos: { x: slot * 16, y: 12 * 16 },
+      vel: { x: -0.4, y: 0 },
       width: 16,
       height: 16,
       dead: false,
       grounded: false,
       direction: -1
     });
-  }
+  });
 
   return {
     map,
@@ -221,45 +274,42 @@ export const generateLevel1_3 = (): LevelData => {
   const map = createEmptyMap();
   const entities: Entity[] = [];
   
-  // Trees / Mushrooms platforms style
-  // No continuous ground at bottom!
+  // Base ground, later carved into gaps for athletic feel
+  placeGround(map, 0, 220);
   
-  // Starting platform
-  placeGround(map, 0, 10);
+  const gaps = [
+    { start: 18, width: 3, platformHeight: 3 },
+    { start: 36, width: 2, platformHeight: 4 },
+    { start: 54, width: 3, platformHeight: 3 },
+    { start: 72, width: 3, platformHeight: 4 },
+    { start: 96, width: 2, platformHeight: 3 },
+    { start: 118, width: 3, platformHeight: 4 },
+    { start: 140, width: 3, platformHeight: 3 },
+    { start: 160, width: 2, platformHeight: 4 }
+  ];
   
-  // Tree 1
-  fillRect(map, 15, 8, 5, 1, TileType.BRICK); // Platform
-  fillRect(map, 17, 9, 1, 4, TileType.HARD_BLOCK); // Trunk
+  gaps.forEach(({ start, width, platformHeight }) => {
+    carveGap(map, start, width);
+    placeMushroomPlatform(map, start - 1, 5, platformHeight);
+  });
   
-  // Tree 2 (Higher)
-  fillRect(map, 25, 6, 5, 1, TileType.BRICK);
-  fillRect(map, 27, 7, 1, 6, TileType.HARD_BLOCK);
+  // Additional floating bridges and coins
+  placeFloatingPlatform(map, 30, 6, 3);
+  placeFloatingPlatform(map, 45, 5, 4);
+  placeFloatingPlatform(map, 62, 7, 3);
+  placeFloatingPlatform(map, 85, 6, 4);
+  placeFloatingPlatform(map, 108, 6, 3);
+  placeFloatingPlatform(map, 132, 7, 4);
+  placeFloatingPlatform(map, 155, 5, 3);
+  placeFloatingPlatform(map, 175, 6, 3);
   
-  // Moving platforms (simulated with static bricks for now)
-  fillRect(map, 35, 8, 3, 1, TileType.BRICK);
-  fillRect(map, 45, 5, 3, 1, TileType.BRICK);
+  for(let x=30; x<180; x+=10) {
+    set(map, 10, x, TileType.COIN);
+  }
   
-  // Coin heaven
-  for(let x=45; x<48; x++) set(map, x, 4, TileType.COIN);
-  
-  // Ground section
-  placeGround(map, 55, 15);
-  
-  // Bridges
-  fillRect(map, 80, 8, 10, 1, TileType.BRICK);
-  
-  // Tree 3
-  fillRect(map, 100, 7, 5, 1, TileType.BRICK);
-  fillRect(map, 102, 8, 1, 5, TileType.HARD_BLOCK);
-  
-  // High platform run
-  fillRect(map, 120, 5, 20, 1, TileType.BRICK);
-  
-  // Finish area
+  // Finish area: ensure solid approach
   placeGround(map, 180, 40);
-  
-  // Staircase to finish
-  createStair(map, 190, 8, 1);
+  createStair(map, 190, 6, 1);
   
   // Flag
   set(map, 210, 12, TileType.HARD_BLOCK);
@@ -267,20 +317,21 @@ export const generateLevel1_3 = (): LevelData => {
   set(map, 210, 2, TileType.FLAG);
   set(map, 214, 12, TileType.CASTLE); 
   
-  // Enemies
-  for(let i=0; i<10; i++) {
+  // Enemies on safe plateaus
+  const athleticGoombas = [12, 28, 44, 70, 95, 122, 150, 185];
+  athleticGoombas.forEach((slot, i) => {
     entities.push({
-      id: i + 300,
+      id: 300 + i,
       type: EntityType.GOOMBA,
-      pos: { x: (30 + i * 15) * 16, y: 0 }, // Drop from sky
-      vel: { x: -0.5, y: 0 },
+      pos: { x: slot * 16, y: 12 * 16 },
+      vel: { x: -0.4, y: 0 },
       width: 16,
       height: 16,
       dead: false,
       grounded: false,
       direction: -1
     });
-  }
+  });
 
   return {
     map,
@@ -300,106 +351,60 @@ export const generateLevel1_4 = (): LevelData => {
   
   // Fill background wall pattern (optional, skipped for now for clarity)
   
-  // Pits with "lava" (just pits for now)
-  const makeLavaPit = (x: number, w: number) => {
-    for(let i=0; i<w; i++) {
-      set(map, x+i, 13, TileType.AIR);
-      set(map, x+i, 14, TileType.AIR);
-    }
-  };
+  // Lava pits with safety platforms (≤ physical jump limits)
+  const lavaPits = [
+    { start: 22, width: 2 },
+    { start: 40, width: 3 },
+    { start: 60, width: 3 },
+    { start: 90, width: 2 },
+    { start: 130, width: 3 }
+  ];
+  lavaPits.forEach(({ start, width }, i) => {
+    carveGap(map, start, width);
+    placeFloatingPlatform(map, start - 1, width + 3, 2 + (i % 2), TileType.BRICK);
+  });
   
-  // --- Obstacle Course ---
+  // Maze columns and extra obstacles
+  [80, 100, 120].forEach(x => fillRect(map, x, 5, 2, 7, TileType.HARD_BLOCK));
   
-  // Pit 1
-  makeLavaPit(20, 3);
-  // Platform over pit
-  fillRect(map, 20, 9, 3, 1, TileType.BRICK);
-  
-  // Firebar simulation (Hard blocks in a line)
-  fillRect(map, 30, 5, 1, 8, TileType.AIR); // Clear space
-  set(map, 30, 9, TileType.HARD_BLOCK); // Pivot
-  set(map, 30, 8, TileType.QUESTION_BLOCK); 
-  
-  // Rotating bar section (simulated with obstacles)
-  fillRect(map, 40, 10, 1, 3, TileType.HARD_BLOCK);
-  fillRect(map, 45, 8, 1, 3, TileType.HARD_BLOCK);
-  
-  // Pit 2 (Longer)
-  makeLavaPit(55, 6);
-  // Islands in pit
-  set(map, 57, 10, TileType.HARD_BLOCK);
-  set(map, 59, 8, TileType.HARD_BLOCK);
-  
-  // High wall
-  fillRect(map, 70, 4, 2, 9, TileType.HARD_BLOCK);
-  
-  // Upper path
-  fillRect(map, 72, 6, 10, 1, TileType.BRICK);
-  
-  // Lower path with enemies
-  for(let x=75; x<85; x+=3) {
-     entities.push({
-       id: 900 + x,
-       type: EntityType.GOOMBA,
-       pos: { x: x*16, y: 12*16 },
-       vel: { x: -0.5, y: 0 },
-       width: 16, height: 16, dead: false, grounded: false, direction: -1
-     });
-  }
-  
-  // Maze section
-  fillRect(map, 90, 5, 1, 8, TileType.HARD_BLOCK);
-  fillRect(map, 95, 5, 1, 8, TileType.HARD_BLOCK);
-  fillRect(map, 100, 5, 1, 8, TileType.HARD_BLOCK);
-  
-  // Pit 3
-  makeLavaPit(110, 4);
-  // Moving platform (static for now)
-  fillRect(map, 111, 9, 2, 1, TileType.BRICK);
-  
-  // Firebar gauntlet
-  for(let x=120; x<150; x+=10) {
-    set(map, x, 9, TileType.HARD_BLOCK); // Pivot
-    set(map, x, 8, TileType.HARD_BLOCK);
-    set(map, x, 7, TileType.HARD_BLOCK);
-    
-    // Enemy near bar
-    entities.push({
-       id: 1000 + x,
-       type: EntityType.GOOMBA,
-       pos: { x: (x+2)*16, y: 12*16 },
-       vel: { x: -0.5, y: 0 },
-       width: 16, height: 16, dead: false, grounded: false, direction: -1
-     });
-  }
-  
-  // Bowser area preparation
-  fillRect(map, 160, 8, 5, 1, TileType.HARD_BLOCK); // High platform before bridge
-  
-  // Bowser Bridge
+  // Bowser bridge
   const bowserX = 180;
-  makeLavaPit(bowserX - 5, 15);
-  fillRect(map, bowserX - 5, 9, 15, 1, TileType.BRICK); // The bridge
+  carveGap(map, bowserX - 5, 3);
+  fillRect(map, bowserX - 5, 10, 15, 1, TileType.BRICK);
+  placeFloatingPlatform(map, bowserX - 2, 4, 3, TileType.HARD_BLOCK);
   
-  // Bowser (Goomba swarm standing in for him)
+  // Axe / goal trigger
+  set(map, bowserX + 10, 8, TileType.FLAG); 
+  
+  // Enemies (guards + fake Bowser)
+  const castleGuards = [18, 32, 58, 78, 105, 135, 170];
+  castleGuards.forEach((slot, i) => {
+    entities.push({
+      id: 900 + i,
+      type: EntityType.GOOMBA,
+      pos: { x: slot * 16, y: 12 * 16 },
+      vel: { x: -0.35, y: 0 },
+      width: 16,
+      height: 16,
+      dead: false,
+      grounded: false,
+      direction: -1
+    });
+  });
+  
   entities.push({
     id: 999,
     type: EntityType.GOOMBA, 
-    pos: { x: bowserX * 16, y: 8 * 16 },
-    vel: { x: -0.5, y: 0 },
+    pos: { x: bowserX * 16, y: 10 * 16 },
+    vel: { x: -0.4, y: 0 },
     width: 16,
     height: 16,
     dead: false,
     grounded: false,
     direction: -1
   });
-  
-  // Extra guards
-  entities.push({ id: 998, type: EntityType.GOOMBA, pos: { x: (bowserX-2) * 16, y: 8 * 16 }, vel: { x: -0.5, y: 0 }, width: 16, height: 16, dead: false, grounded: false, direction: -1 });
-  entities.push({ id: 997, type: EntityType.GOOMBA, pos: { x: (bowserX+2) * 16, y: 8 * 16 }, vel: { x: -0.5, y: 0 }, width: 16, height: 16, dead: false, grounded: false, direction: -1 });
-  
-  // Axe (Flag)
-  set(map, bowserX + 10, 8, TileType.FLAG); 
+  entities.push({ id: 998, type: EntityType.GOOMBA, pos: { x: (bowserX-2) * 16, y: 10 * 16 }, vel: { x: -0.4, y: 0 }, width: 16, height: 16, dead: false, grounded: false, direction: -1 });
+  entities.push({ id: 997, type: EntityType.GOOMBA, pos: { x: (bowserX+2) * 16, y: 10 * 16 }, vel: { x: -0.4, y: 0 }, width: 16, height: 16, dead: false, grounded: false, direction: -1 });
   
   // Final Room
   // Just walk to right to win

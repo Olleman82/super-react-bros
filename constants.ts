@@ -17,6 +17,12 @@ export const MAX_RUN_SPEED = 2.6;
 export const JUMP_FORCE = 6.6; 
 export const BOUNCE_FORCE = 3.5;
 
+// Approximate physical limits derived from the physics constants above.
+// Used when designing levels so Mario never encounters impossible jumps.
+export const MAX_JUMP_HEIGHT_TILES = 4.5;   // ≈72px, safe 4-tile platforms
+export const MAX_HORIZONTAL_GAP_TILES = 3.5; // With a running start Mario clears ~3 tiles
+export const MAX_STEP_HEIGHT_TILES = 3;      // Comfortable single-jump climb without momentum
+
 // Asset Colors
 export const COLORS = {
   SKY: '#5C94FC',
