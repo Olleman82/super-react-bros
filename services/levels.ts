@@ -185,8 +185,6 @@ export const generateLevel1_2 = (): LevelData => {
   // Stairs down
   createStair(map, 110, 4, 1);
   
-  // Long straight with enemies
-  
   // Exit pipe
   placePipe(map, 180, 4); // To warp zone?
   placePipe(map, 200, 2); // Normal exit
@@ -300,6 +298,8 @@ export const generateLevel1_4 = (): LevelData => {
   placeGround(map, 0, 220, 13);
   fillRect(map, 0, 0, 220, 2, TileType.HARD_BLOCK); // Ceiling
   
+  // Fill background wall pattern (optional, skipped for now for clarity)
+  
   // Pits with "lava" (just pits for now)
   const makeLavaPit = (x: number, w: number) => {
     for(let i=0; i<w; i++) {
@@ -308,29 +308,83 @@ export const generateLevel1_4 = (): LevelData => {
     }
   };
   
-  makeLavaPit(30, 3);
-  makeLavaPit(50, 4);
+  // --- Obstacle Course ---
   
-  // Firebars (rotating) - need obstacles
-  // Place blocks where firebars would be
-  set(map, 40, 9, TileType.QUESTION_BLOCK);
-  set(map, 60, 5, TileType.HARD_BLOCK);
-  set(map, 60, 9, TileType.HARD_BLOCK);
+  // Pit 1
+  makeLavaPit(20, 3);
+  // Platform over pit
+  fillRect(map, 20, 9, 3, 1, TileType.BRICK);
   
-  // Bowser area
-  // Bridge over lava
+  // Firebar simulation (Hard blocks in a line)
+  fillRect(map, 30, 5, 1, 8, TileType.AIR); // Clear space
+  set(map, 30, 9, TileType.HARD_BLOCK); // Pivot
+  set(map, 30, 8, TileType.QUESTION_BLOCK); 
+  
+  // Rotating bar section (simulated with obstacles)
+  fillRect(map, 40, 10, 1, 3, TileType.HARD_BLOCK);
+  fillRect(map, 45, 8, 1, 3, TileType.HARD_BLOCK);
+  
+  // Pit 2 (Longer)
+  makeLavaPit(55, 6);
+  // Islands in pit
+  set(map, 57, 10, TileType.HARD_BLOCK);
+  set(map, 59, 8, TileType.HARD_BLOCK);
+  
+  // High wall
+  fillRect(map, 70, 4, 2, 9, TileType.HARD_BLOCK);
+  
+  // Upper path
+  fillRect(map, 72, 6, 10, 1, TileType.BRICK);
+  
+  // Lower path with enemies
+  for(let x=75; x<85; x+=3) {
+     entities.push({
+       id: 900 + x,
+       type: EntityType.GOOMBA,
+       pos: { x: x*16, y: 12*16 },
+       vel: { x: -0.5, y: 0 },
+       width: 16, height: 16, dead: false, grounded: false, direction: -1
+     });
+  }
+  
+  // Maze section
+  fillRect(map, 90, 5, 1, 8, TileType.HARD_BLOCK);
+  fillRect(map, 95, 5, 1, 8, TileType.HARD_BLOCK);
+  fillRect(map, 100, 5, 1, 8, TileType.HARD_BLOCK);
+  
+  // Pit 3
+  makeLavaPit(110, 4);
+  // Moving platform (static for now)
+  fillRect(map, 111, 9, 2, 1, TileType.BRICK);
+  
+  // Firebar gauntlet
+  for(let x=120; x<150; x+=10) {
+    set(map, x, 9, TileType.HARD_BLOCK); // Pivot
+    set(map, x, 8, TileType.HARD_BLOCK);
+    set(map, x, 7, TileType.HARD_BLOCK);
+    
+    // Enemy near bar
+    entities.push({
+       id: 1000 + x,
+       type: EntityType.GOOMBA,
+       pos: { x: (x+2)*16, y: 12*16 },
+       vel: { x: -0.5, y: 0 },
+       width: 16, height: 16, dead: false, grounded: false, direction: -1
+     });
+  }
+  
+  // Bowser area preparation
+  fillRect(map, 160, 8, 5, 1, TileType.HARD_BLOCK); // High platform before bridge
+  
+  // Bowser Bridge
   const bowserX = 180;
   makeLavaPit(bowserX - 5, 15);
   fillRect(map, bowserX - 5, 9, 15, 1, TileType.BRICK); // The bridge
   
-  // Axe (Use a flag or coin as placeholder for now)
-  set(map, bowserX + 10, 8, TileType.FLAG); 
-  
-  // Enemies
-  // Fake Bowser (Goomba)
+  // Bowser (Goomba swarm standing in for him)
   entities.push({
     id: 999,
-    type: EntityType.GOOMBA, // TODO: Make Bowser
+    type: EntityType.GOOMBA, 
     pos: { x: bowserX * 16, y: 8 * 16 },
     vel: { x: -0.5, y: 0 },
     width: 16,
@@ -339,6 +393,13 @@ export const generateLevel1_4 = (): LevelData => {
     grounded: false,
     direction: -1
   });
+  
+  // Extra guards
+  entities.push({ id: 998, type: EntityType.GOOMBA, pos: { x: (bowserX-2) * 16, y: 8 * 16 }, vel: { x: -0.5, y: 0 }, width: 16, height: 16, dead: false, grounded: false, direction: -1 });
+  entities.push({ id: 997, type: EntityType.GOOMBA, pos: { x: (bowserX+2) * 16, y: 8 * 16 }, vel: { x: -0.5, y: 0 }, width: 16, height: 16, dead: false, grounded: false, direction: -1 });
+  
+  // Axe (Flag)
+  set(map, bowserX + 10, 8, TileType.FLAG); 
   
   // Final Room
   // Just walk to right to win
@@ -349,4 +410,3 @@ export const generateLevel1_4 = (): LevelData => {
     backgroundColor: '#000000'
   };
 };
-

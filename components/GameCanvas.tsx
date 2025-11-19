@@ -1,7 +1,7 @@
 
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Entity, EntityType, GameStatus, TileType, Vector2D, LevelData, Player } from '../types';
-import { TILE_SIZE, SCALE, SCREEN_WIDTH, SCREEN_HEIGHT, GRAVITY, FRICTION, ACCELERATION, MAX_WALK_SPEED, MAX_RUN_SPEED, JUMP_FORCE, COLORS, MARIO_SPRITE_STAND, GOOMBA_SPRITE, BOUNCE_FORCE, MARIO_SPRITE_BIG, MUSHROOM_SPRITE, FLOWER_SPRITE, FIREBALL_SPRITE } from '../constants';
+import { TILE_SIZE, SCALE, SCREEN_WIDTH, SCREEN_HEIGHT, GRAVITY, FRICTION, ACCELERATION, MAX_WALK_SPEED, MAX_RUN_SPEED, JUMP_FORCE, COLORS, MARIO_SPRITE_STAND, MARIO_SPRITE_WALK1, MARIO_SPRITE_WALK2, MARIO_SPRITE_WALK3, MARIO_SPRITE_JUMP, MARIO_SPRITE_BIG, MARIO_SPRITE_BIG_WALK1, MARIO_SPRITE_BIG_WALK2, MARIO_SPRITE_BIG_WALK3, MARIO_SPRITE_BIG_JUMP, GOOMBA_SPRITE, BOUNCE_FORCE, MUSHROOM_SPRITE, FLOWER_SPRITE, FIREBALL_SPRITE } from '../constants';
 import { audioService } from '../services/audioService';
 
 interface GameCanvasProps {
@@ -62,35 +62,34 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ status, levelData, onScore, onC
     for (let offset = 0; offset < 10; offset++) {
       const checkX = Math.max(0, START_TILE_X - offset);
       
-      // Find the TOP of the ground tile at this X position
-      // We need to find the highest ground tile (lowest y value) that has ground
-      // Search from top down to find the first (highest) ground tile
+      // Find the first solid ground searching from BOTTOM UP
+      // This prevents spawning on ceiling tiles in 1-2/1-4
       let groundTileY = -1;
-      for (let y = 0; y < map.length; y++) {
+      
+      // Search from bottom (row 14) up to row 2 (ignoring top 2 rows which might be ceiling)
+      for (let y = map.length - 1; y >= 2; y--) {
         if (map[y] && GROUND_TILES.includes(map[y][checkX])) {
-          // Found ground - this is the topmost ground tile at this column
-          groundTileY = y;
-          break; // Found the topmost ground tile, no need to continue
+          // Found ground
+          
+          // Check if there is space above this tile for Mario
+          // We need at least 2 blocks of air (32px) or just 1 block (16px) for small Mario
+          const tileAbove = y - 1;
+          if (tileAbove >= 0 && map[tileAbove] && !GROUND_TILES.includes(map[tileAbove][checkX])) {
+             groundTileY = y;
+             break; 
+          }
         }
       }
       
       if (groundTileY >= 0) {
         // Found ground tile at row groundTileY
-        // Ground tile's top edge is at groundTileY * TILE_SIZE
-        // Mario's bottom should be at groundTileY * TILE_SIZE
-        // So Mario's top should be at groundTileY * TILE_SIZE - MARIO_HEIGHT
         const groundTopY = groundTileY * TILE_SIZE;
         const marioY = groundTopY - MARIO_HEIGHT;
-        
-        // Double-check: Mario should be above ground, not inside it
-        if (marioY < groundTopY) {
-          return { x: checkX * TILE_SIZE + 2, y: marioY };
-        }
+        return { x: checkX * TILE_SIZE + 2, y: marioY };
       }
     }
     
     // Fallback: place at bottom of screen (above ground level)
-    // Use row 12 (one row above typical ground rows 13-14)
     const fallbackY = 12 * TILE_SIZE - MARIO_HEIGHT;
     return { x: START_X, y: fallbackY };
   };
@@ -751,11 +750,27 @@ const GameCanvas: React.FC<GameCanvasProps> = ({ status, levelData, onScore, onC
         const c2 = p.powerMode === 'fire' ? COLORS.MUSHROOM_SKIN : COLORS.MARIO_SKIN; 
         const c3 = p.powerMode === 'fire' ? COLORS.FIRE_RED : COLORS.MARIO_BROWN; 
 
-        if (isBig) {
-            drawSprite(ctx, MARIO_SPRITE_BIG, p.pos.x, p.pos.y, p.direction === -1, c1, c2, c3);
-        } else {
-            drawSprite(ctx, MARIO_SPRITE_STAND, p.pos.x, p.pos.y, p.direction === -1, c1, c2, c3);
+        let sprite = isBig ? MARIO_SPRITE_BIG : MARIO_SPRITE_STAND;
+
+        // Animation Logic
+        if (!p.grounded) {
+           // Jump Frame
+           sprite = isBig ? MARIO_SPRITE_BIG_JUMP : MARIO_SPRITE_JUMP;
+        } else if (Math.abs(p.vel.x) > 0.1) {
+           // Walk Cycle (3 frames)
+           const frame = Math.floor(frameCountRef.current / 5) % 3;
+           if (isBig) {
+              if (frame === 0) sprite = MARIO_SPRITE_BIG_WALK1;
+              else if (frame === 1) sprite = MARIO_SPRITE_BIG_WALK2;
+              else sprite = MARIO_SPRITE_BIG_WALK3;
+           } else {
+              if (frame === 0) sprite = MARIO_SPRITE_WALK1;
+              else if (frame === 1) sprite = MARIO_SPRITE_WALK2;
+              else sprite = MARIO_SPRITE_WALK3;
+           }
         }
+
+        drawSprite(ctx, sprite, p.pos.x, p.pos.y, p.direction === -1, c1, c2, c3);
     }
 
     gameState.current.particles.forEach(part => {
