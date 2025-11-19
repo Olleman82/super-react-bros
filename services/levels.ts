@@ -1,5 +1,5 @@
-import { TileType, LevelData, EntityType, Entity } from "./types";
-import { COLORS } from "./constants";
+import { TileType, LevelData, EntityType, Entity } from "../types";
+import { COLORS } from "../constants";
 
 const LEVEL_WIDTH = 220;
 const LEVEL_HEIGHT = 15;
